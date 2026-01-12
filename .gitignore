@@ -1,0 +1,11 @@
+# Ignore publish output folder
+/publish/
+
+# Common build folders
+/bin/
+/obj/
+
+# User-specific files
+.vscode/
+*.user
+*.suo

@@ -208,3 +208,4 @@
 /home/pixeleru/Documents/MyFirstGtkApp/obj/Release/net10.0/linux-x64/BoxyTube.pdb
 /home/pixeleru/Documents/MyFirstGtkApp/obj/Release/net10.0/linux-x64/BoxyTube.genruntimeconfig.cache
 /home/pixeleru/Documents/MyFirstGtkApp/obj/Release/net10.0/linux-x64/ref/BoxyTube.dll
+/home/pixeleru/Documents/MyFirstGtkApp/obj/Release/net10.0/linux-x64/BoxyTube.sourcelink.json

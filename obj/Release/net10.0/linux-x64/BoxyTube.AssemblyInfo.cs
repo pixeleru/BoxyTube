@@ -13,7 +13,7 @@ using System.Reflection;
 [assembly: System.Reflection.AssemblyCompanyAttribute("BoxyTube")]
 [assembly: System.Reflection.AssemblyConfigurationAttribute("Release")]
 [assembly: System.Reflection.AssemblyFileVersionAttribute("1.0.0.0")]
-[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0")]
+[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0+f61b623c3a63805c4cd2d888fb50bf6381a09ff5")]
 [assembly: System.Reflection.AssemblyProductAttribute("BoxyTube")]
 [assembly: System.Reflection.AssemblyTitleAttribute("BoxyTube")]
 [assembly: System.Reflection.AssemblyVersionAttribute("1.0.0.0")]
