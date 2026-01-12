@@ -1,0 +1,2 @@
+/home/pixeleru/Documents/MyFirstGtkApp/bin/Release/net10.0/linux-x64/publish/BoxyTube.pdb
+/home/pixeleru/Documents/MyFirstGtkApp/bin/Release/net10.0/linux-x64/publish/BoxyTube

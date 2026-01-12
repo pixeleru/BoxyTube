@@ -1,0 +1,582 @@
+using Gtk;
+using System;
+using System.Diagnostics;
+using System.Linq;
+using System.Threading.Tasks;
+
+public class VideoPlayerView : Box
+{
+    private readonly MainWindow _mainWindow;
+    private readonly InvidiousApi _api;
+    private VideoItem? _currentVideo;
+    private VideoItem? _currentVideoDetails;  // Full details with quality options
+    
+    // UI Elements
+    private Label _videoTitle = null!;
+    private Label _videoChannel = null!;
+    private Label _videoDescription = null!;
+    private Label _statusLabel = null!;
+    private Button _playEmbedBtn = null!;
+    private Button _fullscreenBtn = null!;
+    private Button _openInBrowserBtn = null!;
+    private Button _copyLinkBtn = null!;
+    private Image _thumbnailImage = null!;
+    private Box _thumbnailBox = null!;
+    private ComboBoxText _qualityCombo = null!;
+    
+    // WebKit embedded player
+    private WebKitVideoPlayer? _webKitPlayer;
+    private Box _playerContainer = null!;
+    private bool _isEmbedPlaying;
+    
+    // Fullscreen window (reparenting approach)
+    private Gtk.Window? _fullscreenWindow;
+    private bool _isFullscreen;
+
+    public VideoPlayerView(MainWindow mainWindow) : base(Orientation.Vertical, 0)
+    {
+        _mainWindow = mainWindow;
+        _api = new InvidiousApi();
+        
+        BuildUI();
+    }
+
+    private void BuildUI()
+    {
+        // Top bar with back button
+        var topBar = new Box(Orientation.Horizontal, 8)
+        {
+            MarginTop = 8,
+            MarginBottom = 8,
+            MarginStart = 8,
+            MarginEnd = 8
+        };
+
+        var backBtn = new Button("← Back");
+        backBtn.Clicked += OnBackClicked;
+        topBar.PackStart(backBtn, false, false, 0);
+
+        _statusLabel = new Label("")
+        {
+            Halign = Align.End,
+            Opacity = 0.7
+        };
+        topBar.PackEnd(_statusLabel, false, false, 0);
+
+        PackStart(topBar, false, false, 0);
+
+        // Player container - holds either thumbnail or WebKit player
+        _playerContainer = new Box(Orientation.Vertical, 0)
+        {
+            HeightRequest = 360
+        };
+
+        // Thumbnail/poster area
+        _thumbnailBox = new Box(Orientation.Vertical, 0)
+        {
+            HeightRequest = 360,
+            Halign = Align.Center,
+            Valign = Align.Center
+        };
+        _thumbnailBox.StyleContext.AddClass("view");
+
+        _thumbnailImage = new Image();
+        
+        var playOverlay = new Box(Orientation.Vertical, 8)
+        {
+            Halign = Align.Center,
+            Valign = Align.Center
+        };
+
+        var playIcon = new Label("▶")
+        {
+            Opacity = 0.8
+        };
+        playIcon.StyleContext.AddClass("title-1");
+
+        var playHint = new Label("Click Play to watch")
+        {
+            Opacity = 0.6
+        };
+
+        playOverlay.PackStart(playIcon, false, false, 0);
+        playOverlay.PackStart(playHint, false, false, 0);
+
+        _thumbnailBox.PackStart(_thumbnailImage, true, true, 0);
+        _thumbnailBox.PackStart(playOverlay, false, false, 8);
+
+        _playerContainer.PackStart(_thumbnailBox, true, true, 0);
+        
+        // Initialize WebKit player
+        try
+        {
+            _webKitPlayer = new WebKitVideoPlayer();
+            _webKitPlayer.NoShowAll = true;
+            _webKitPlayer.Hide();
+            _playerContainer.PackStart(_webKitPlayer, true, true, 0);
+            Console.WriteLine($"WebKit player available: {_webKitPlayer.IsAvailable}");
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Failed to create WebKit player: {ex.Message}");
+            _webKitPlayer = null;
+        }
+
+        PackStart(_playerContainer, false, false, 0);
+
+        // Playback controls
+        var controlsBox = new Box(Orientation.Horizontal, 8)
+        {
+            MarginStart = 16,
+            MarginEnd = 16,
+            MarginTop = 12,
+            MarginBottom = 8,
+            Halign = Align.Center
+        };
+
+        _playEmbedBtn = new Button("▶ Play");
+        _playEmbedBtn.StyleContext.AddClass("suggested-action");
+        _playEmbedBtn.Clicked += OnPlayEmbedClicked;
+        if (_webKitPlayer == null || !_webKitPlayer.IsAvailable)
+        {
+            _playEmbedBtn.Sensitive = false;
+            _playEmbedBtn.TooltipText = "WebKit not available";
+        }
+        
+        // Quality selector
+        _qualityCombo = new ComboBoxText();
+        _qualityCombo.Append("auto", "Auto");
+        _qualityCombo.Active = 0;
+        _qualityCombo.Changed += OnQualityChanged;
+        _qualityCombo.TooltipText = "Select video quality";
+        
+        // Fullscreen button
+        _fullscreenBtn = new Button("⛶ Fullscreen");
+        _fullscreenBtn.Clicked += OnFullscreenClicked;
+        _fullscreenBtn.TooltipText = "Toggle fullscreen (F)";
+
+        var stopBtn = new Button("⏹ Stop");
+        stopBtn.Clicked += OnStopClicked;
+
+        _openInBrowserBtn = new Button("🌐 Browser");
+        _openInBrowserBtn.Clicked += OnOpenInBrowser;
+
+        _copyLinkBtn = new Button("📋 Copy Link");
+        _copyLinkBtn.Clicked += OnCopyLink;
+
+        controlsBox.PackStart(_playEmbedBtn, false, false, 0);
+        controlsBox.PackStart(_qualityCombo, false, false, 0);
+        controlsBox.PackStart(_fullscreenBtn, false, false, 0);
+        controlsBox.PackStart(stopBtn, false, false, 0);
+        controlsBox.PackStart(_openInBrowserBtn, false, false, 0);
+        controlsBox.PackStart(_copyLinkBtn, false, false, 0);
+
+        PackStart(controlsBox, false, false, 0);
+
+        // Video info section (scrollable)
+        var scroll = new ScrolledWindow
+        {
+            VscrollbarPolicy = PolicyType.Automatic,
+            HscrollbarPolicy = PolicyType.Never
+        };
+
+        var infoBox = new Box(Orientation.Vertical, 8)
+        {
+            MarginTop = 16,
+            MarginBottom = 16,
+            MarginStart = 16,
+            MarginEnd = 16
+        };
+
+        _videoTitle = new Label("Select a video to play")
+        {
+            Xalign = 0,
+            Wrap = true
+        };
+        _videoTitle.StyleContext.AddClass("title-2");
+
+        var statsRow = new Box(Orientation.Horizontal, 16);
+        
+        _videoChannel = new Label("")
+        {
+            Xalign = 0
+        };
+
+        var openChannelBtn = new Button("View Channel");
+        openChannelBtn.Clicked += OnOpenChannel;
+
+        statsRow.PackStart(_videoChannel, false, false, 0);
+        statsRow.PackEnd(openChannelBtn, false, false, 0);
+
+        var separator = new Separator(Orientation.Horizontal);
+
+        _videoDescription = new Label("")
+        {
+            Xalign = 0,
+            Wrap = true,
+            MaxWidthChars = 80
+        };
+
+        infoBox.PackStart(_videoTitle, false, false, 0);
+        infoBox.PackStart(statsRow, false, false, 0);
+        infoBox.PackStart(separator, false, false, 8);
+        infoBox.PackStart(_videoDescription, false, false, 0);
+
+        scroll.Add(infoBox);
+        PackStart(scroll, true, true, 0);
+    }
+
+    private void OnBackClicked(object? sender, EventArgs e)
+    {
+        StopEmbedPlayback();
+        _mainWindow.ShowView("home");
+    }
+
+    private void OnStopClicked(object? sender, EventArgs e)
+    {
+        StopEmbedPlayback();
+    }
+
+    private async void OnPlayEmbedClicked(object? sender, EventArgs e)
+    {
+        if (_currentVideo == null || _webKitPlayer == null) return;
+
+        if (_isEmbedPlaying)
+        {
+            StopEmbedPlayback();
+        }
+        else
+        {
+            await StartEmbedPlayback();
+        }
+    }
+    
+    private void OnQualityChanged(object? sender, EventArgs e)
+    {
+        if (!_isEmbedPlaying || _currentVideoDetails == null || _webKitPlayer == null) return;
+        
+        var activeId = _qualityCombo.ActiveId;
+        if (string.IsNullOrEmpty(activeId)) return;
+        
+        if (int.TryParse(activeId, out int index) && index >= 0 && index < _currentVideoDetails.AvailableQualities.Count)
+        {
+            var selectedQuality = _currentVideoDetails.AvailableQualities[index];
+            Console.WriteLine($"Switching to quality: {selectedQuality.Label}");
+            _webKitPlayer.PlayVideo(selectedQuality.VideoUrl, selectedQuality.AudioUrl, _currentVideo?.Title);
+            _statusLabel.Text = $"Playing: {selectedQuality.Label}";
+        }
+    }
+    
+    private void OnFullscreenClicked(object? sender, EventArgs e)
+    {
+        ToggleFullscreen();
+    }
+    
+    private void ToggleFullscreen()
+    {
+        if (_webKitPlayer == null || !_isEmbedPlaying) return;
+        
+        if (_isFullscreen)
+        {
+            ExitFullscreen();
+        }
+        else
+        {
+            EnterFullscreen();
+        }
+    }
+    
+    private void EnterFullscreen()
+    {
+        if (_isFullscreen || _webKitPlayer == null || _fullscreenWindow != null) return;
+        
+        Console.WriteLine("Entering fullscreen");
+        
+        // Create a new fullscreen window
+        _fullscreenWindow = new Gtk.Window(WindowType.Toplevel);
+        _fullscreenWindow.Title = "Video - Fullscreen";
+        _fullscreenWindow.Decorated = false;
+        
+        // Set to a large size, fullscreen will handle the rest
+        _fullscreenWindow.SetDefaultSize(1920, 1080);
+        
+        // Reparent WebKit player to fullscreen window
+        _playerContainer.Remove(_webKitPlayer);
+        _fullscreenWindow.Add(_webKitPlayer);
+        
+        // Handle escape key and window close
+        _fullscreenWindow.KeyPressEvent += OnFullscreenKeyPress;
+        _fullscreenWindow.DeleteEvent += (s, e) => { ExitFullscreen(); e.RetVal = true; };
+        
+        // Show and fullscreen
+        _fullscreenWindow.ShowAll();
+        _fullscreenWindow.Fullscreen();
+        _fullscreenWindow.Present();
+        
+        _isFullscreen = true;
+    }
+    
+    [GLib.ConnectBefore]
+    private void OnFullscreenKeyPress(object sender, KeyPressEventArgs e)
+    {
+        if (!_isFullscreen) return;
+        
+        if (e.Event.Key == Gdk.Key.Escape || e.Event.Key == Gdk.Key.f || e.Event.Key == Gdk.Key.F)
+        {
+            ExitFullscreen();
+            e.RetVal = true;
+        }
+    }
+    
+    private void ExitFullscreen()
+    {
+        if (!_isFullscreen || _webKitPlayer == null || _fullscreenWindow == null) return;
+        
+        Console.WriteLine("Exiting fullscreen");
+        
+        // Reparent WebKit player back to main container
+        _fullscreenWindow.Remove(_webKitPlayer);
+        _playerContainer.PackStart(_webKitPlayer, true, true, 0);
+        _webKitPlayer.ShowAll();
+        
+        // Destroy fullscreen window
+        _fullscreenWindow.Hide();
+        _fullscreenWindow.Destroy();
+        _fullscreenWindow = null;
+        
+        _isFullscreen = false;
+        _fullscreenBtn.Label = "⛶ Fullscreen";
+    }
+
+    private async Task StartEmbedPlayback(VideoItem? preloadedDetails = null)
+    {
+        if (_currentVideo == null || _webKitPlayer == null) return;
+
+        // Stop current playback if any
+        StopEmbedPlayback();
+
+        _statusLabel.Text = "Loading...";
+
+        try
+        {
+            // Use preloaded details or fetch if not provided
+            var videoDetails = preloadedDetails ?? await _api.GetVideoAsync(_currentVideo.Id);
+            _currentVideoDetails = videoDetails;
+            
+            if (videoDetails == null)
+            {
+                _statusLabel.Text = "Failed to load video";
+                DialogHelper.ShowError(_mainWindow, "Video Load Error", $"Could not load video details for:\\n{_currentVideo.Title}\\n\\nPlease check your connection or try another video.");
+                return;
+            }
+            
+            // Find 1080p quality or fallback to best available
+            var selectedQuality = videoDetails.AvailableQualities.FirstOrDefault(q => q.Resolution == 1080)
+                               ?? videoDetails.AvailableQualities.FirstOrDefault();
+            
+            if (selectedQuality == null)
+            {
+                _statusLabel.Text = "No playable streams";
+                return;
+            }
+            
+            // Populate quality selector AFTER selecting quality (to avoid triggering change event)
+            PopulateQualityCombo(videoDetails, selectedQuality);
+            
+            Console.WriteLine($"Playing quality: {selectedQuality.Label}");
+            
+            // Show WebKit player, hide thumbnail and start playback immediately
+            _thumbnailBox.Hide();
+            _webKitPlayer.Show();
+            _webKitPlayer.PlayVideo(selectedQuality.VideoUrl, selectedQuality.AudioUrl, _currentVideo.Title);
+            
+            _isEmbedPlaying = true;
+            _playEmbedBtn.Label = "⏹ Stop";
+            _statusLabel.Text = $"Playing: {selectedQuality.Label}";
+        }
+        catch (Exception ex)
+        {
+            _statusLabel.Text = "Error loading video";
+            Console.WriteLine($"Error in StartEmbedPlayback: {ex.Message}");
+            DialogHelper.ShowApiError(_mainWindow, "Loading Video", ex);
+        }
+    }
+    
+    private void PopulateQualityCombo(VideoItem? videoDetails, QualityOption? selectedQuality = null)
+    {
+        // Temporarily disconnect handler to avoid triggering playback
+        _qualityCombo.Changed -= OnQualityChanged;
+        
+        _qualityCombo.RemoveAll();
+        
+        int selectedIndex = 0;
+        
+        if (videoDetails?.AvailableQualities != null)
+        {
+            for (int i = 0; i < videoDetails.AvailableQualities.Count; i++)
+            {
+                var q = videoDetails.AvailableQualities[i];
+                _qualityCombo.Append(i.ToString(), q.Label);
+                
+                // Find the index of the selected quality
+                if (selectedQuality != null && q.Resolution == selectedQuality.Resolution)
+                {
+                    selectedIndex = i;
+                }
+            }
+        }
+        
+        _qualityCombo.Active = selectedIndex;
+        
+        // Reconnect handler
+        _qualityCombo.Changed += OnQualityChanged;
+    }
+
+    private void StopEmbedPlayback()
+    {
+        // Exit fullscreen if active
+        ExitFullscreen();
+        
+        if (_webKitPlayer != null && _isEmbedPlaying)
+        {
+            _webKitPlayer.ShowMessage("Playback stopped");
+            _webKitPlayer.Hide();
+            _thumbnailBox.Show();
+            
+            _isEmbedPlaying = false;
+            _playEmbedBtn.Label = "▶ Play";
+            _statusLabel.Text = "";
+        }
+    }
+
+    private void OnOpenInBrowser(object? sender, EventArgs e)
+    {
+        if (_currentVideo == null) return;
+        
+        var url = $"{AppSettings.Instance.ApiBaseUrl}/watch?v={_currentVideo.Id}";
+        OpenUrl(url);
+    }
+
+    private void OnOpenChannel(object? sender, EventArgs e)
+    {
+        if (_currentVideo == null) return;
+        
+        var url = $"{AppSettings.Instance.ApiBaseUrl}/channel/{_currentVideo.ChannelId}";
+        OpenUrl(url);
+    }
+
+    private void OnCopyLink(object? sender, EventArgs e)
+    {
+        if (_currentVideo == null) return;
+        
+        var url = $"{AppSettings.Instance.ApiBaseUrl}/watch?v={_currentVideo.Id}";
+        var clipboard = Clipboard.Get(Gdk.Atom.Intern("CLIPBOARD", false));
+        clipboard.Text = url;
+        
+        _copyLinkBtn.Label = "✓ Copied!";
+        GLib.Timeout.Add(2000, () =>
+        {
+            _copyLinkBtn.Label = "📋 Copy Link";
+            return false;
+        });
+    }
+
+    private void OpenUrl(string url)
+    {
+        try
+        {
+            Process.Start(new ProcessStartInfo
+            {
+                FileName = url,
+                UseShellExecute = true
+            });
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error opening URL: {ex.Message}");
+            DialogHelper.ShowError(_mainWindow, "Open URL Error", $"Could not open the URL in your browser.\n\n{ex.Message}");
+        }
+    }
+
+    public async void LoadVideo(VideoItem video)
+    {
+        // Stop any current playback first
+        StopEmbedPlayback();
+
+        _currentVideo = video;
+        _videoTitle.Text = video.Title;
+        _videoChannel.Text = $"{video.Channel} • {video.Views} • {video.PublishedText}";
+        _videoDescription.Text = string.IsNullOrEmpty(video.Description) 
+            ? "No description available." 
+            : video.Description;
+        _statusLabel.Text = "Loading...";
+
+        // Load thumbnail
+        await LoadThumbnail(video);
+
+        // Fetch full video details and auto-play immediately
+        var fullVideo = await _api.GetVideoAsync(video.Id);
+        if (fullVideo != null)
+        {
+            if (!string.IsNullOrEmpty(fullVideo.StreamUrl))
+                _currentVideo.StreamUrl = fullVideo.StreamUrl;
+            if (!string.IsNullOrEmpty(fullVideo.Description))
+            {
+                _currentVideo.Description = fullVideo.Description;
+                _videoDescription.Text = fullVideo.Description;
+            }
+            
+            // Auto-play with WebKit if available - pass preloaded details to avoid double fetch
+            if (_webKitPlayer != null && _webKitPlayer.IsAvailable)
+            {
+                await StartEmbedPlayback(fullVideo);
+            }
+            else
+            {
+                _statusLabel.Text = "Ready - Click Play";
+            }
+        }
+        else
+        {
+            _statusLabel.Text = "Could not load video details";
+        }
+    }
+
+    private async Task LoadThumbnail(VideoItem video)
+    {
+        try
+        {
+            var thumbnailUrl = video.ThumbnailUrl;
+            if (string.IsNullOrEmpty(thumbnailUrl))
+            {
+                thumbnailUrl = _api.GetThumbnailUrl(video.Id, "maxresdefault");
+            }
+
+            using var client = new System.Net.Http.HttpClient();
+            var imageData = await client.GetByteArrayAsync(thumbnailUrl);
+            
+            using var stream = new System.IO.MemoryStream(imageData);
+            var pixbuf = new Gdk.Pixbuf(stream);
+            
+            // Scale to fit while maintaining aspect ratio
+            var scaledPixbuf = pixbuf.ScaleSimple(640, 360, Gdk.InterpType.Bilinear);
+            
+            GLib.Idle.Add(() =>
+            {
+                _thumbnailImage.Pixbuf = scaledPixbuf;
+                return false;
+            });
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error loading thumbnail: {ex.Message}");
+        }
+    }
+
+    // Clean up when the view is destroyed
+    protected override void OnDestroyed()
+    {
+        StopEmbedPlayback();
+        base.OnDestroyed();
+    }
+}

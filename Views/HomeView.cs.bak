@@ -1,0 +1,158 @@
+using Gtk;
+using System;
+using System.Collections.Generic;
+
+public class HomeView : Box
+{
+    private readonly MainWindow _mainWindow;
+    private readonly InvidiousApi _api;
+    private FlowBox _videoGrid = null!;
+    private Spinner _spinner = null!;
+    private Label _statusLabel = null!;
+
+    public HomeView(MainWindow mainWindow) : base(Orientation.Vertical, 0)
+    {
+        _mainWindow = mainWindow;
+        _api = new InvidiousApi();
+        BuildUI();
+    }
+
+    private void BuildUI()
+    {
+        // Category bar
+        var categoryBar = new Box(Orientation.Horizontal, 8)
+        {
+            MarginTop = 12,
+            MarginBottom = 12,
+            MarginStart = 12,
+            MarginEnd = 12
+        };
+
+        string[] categories = {"Music", "Gaming", "News", "Movies" };
+        foreach (var cat in categories)
+        {
+            var btn = new Button(cat);
+            if (cat == "Music")
+                btn.StyleContext.AddClass("suggested-action");
+            btn.Clicked += (_, __) => OnCategoryClicked(cat);
+            categoryBar.PackStart(btn, false, false, 0);
+        }
+
+        // Refresh button
+        var refreshBtn = new Button("↻ Refresh");
+        refreshBtn.Clicked += (_, __) => LoadTrendingAsync();
+        categoryBar.PackEnd(refreshBtn, false, false, 0);
+
+        PackStart(categoryBar, false, false, 0);
+
+        // Separator
+        PackStart(new Separator(Orientation.Horizontal), false, false, 0);
+
+        // Loading spinner
+        var loadingBox = new Box(Orientation.Horizontal, 8)
+        {
+            Halign = Align.Center,
+            MarginTop = 8,
+            MarginBottom = 8
+        };
+        _spinner = new Spinner();
+        _statusLabel = new Label("Loading trending videos...");
+        loadingBox.PackStart(_spinner, false, false, 0);
+        loadingBox.PackStart(_statusLabel, false, false, 0);
+        PackStart(loadingBox, false, false, 0);
+
+        // Scrollable video grid
+        var scroll = new ScrolledWindow
+        {
+            VscrollbarPolicy = PolicyType.Automatic,
+            HscrollbarPolicy = PolicyType.Never
+        };
+
+        _videoGrid = new FlowBox
+        {
+            Valign = Align.Start,
+            MaxChildrenPerLine = 4,
+            MinChildrenPerLine = 1,
+            SelectionMode = SelectionMode.None,
+            Homogeneous = true,
+            RowSpacing = 16,
+            ColumnSpacing = 16,
+            MarginTop = 12,
+            MarginBottom = 12,
+            MarginStart = 12,
+            MarginEnd = 12
+        };
+
+        scroll.Add(_videoGrid);
+        PackStart(scroll, true, true, 0);
+
+        // Load Music on start (default tab)
+        LoadTrendingAsync("music");
+    }
+
+    private void OnCategoryClicked(string category)
+    {
+        _statusLabel.Text = $"Loading {category}...";
+        LoadTrendingAsync(category.ToLower());
+    }
+
+    private async void LoadTrendingAsync(string? type = null)
+    {
+        _spinner.Start();
+        _spinner.Visible = true;
+        _statusLabel.Visible = true;
+
+        // Clear existing
+        foreach (var child in _videoGrid.Children)
+        {
+            _videoGrid.Remove(child);
+        }
+
+        List<VideoItem> videos;
+        
+        try
+        {
+            if (type != null && type != "trending")
+            {
+                // Search by category
+                videos = await _api.SearchAsync(type);
+                _statusLabel.Text = $"Showing results for: {type}";
+            }
+            else
+            {
+                videos = await _api.GetTrendingAsync();
+                _statusLabel.Text = $"Showing {videos.Count} trending videos";
+            }
+        }
+        catch (Exception ex)
+        {
+            _spinner.Stop();
+            _spinner.Visible = false;
+            _statusLabel.Text = "Failed to load videos";
+            _statusLabel.Visible = true;
+            DialogHelper.ShowApiError(_mainWindow, "Loading Videos", ex);
+            return;
+        }
+
+        _spinner.Stop();
+        _spinner.Visible = false;
+
+        if (videos.Count == 0)
+        {
+            _statusLabel.Text = "No videos found. Check your connection or API settings.";
+            _statusLabel.Visible = true;
+        }
+        else
+        {
+            _statusLabel.Visible = false;
+            
+            foreach (var video in videos)
+            {
+                var card = new VideoCard(video);
+                card.Clicked += () => _mainWindow.PlayVideo(video);
+                _videoGrid.Add(card);
+            }
+            _videoGrid.ShowAll();
+        }
+    }
+}
