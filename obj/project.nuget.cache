@@ -1,6 +1,6 @@
 {
   "version": 2,
-  "dgSpecHash": "mH3zLnOqqU4=",
+  "dgSpecHash": "cGGW5igVb1Y=",
   "success": true,
   "projectFilePath": "/home/pixeleru/Documents/MyFirstGtkApp/BoxyTube.csproj",
   "expectedPackageFiles": [
@@ -12,9 +12,9 @@
     "/home/pixeleru/.nuget/packages/gtksharp/3.24.24.95/gtksharp.3.24.24.95.nupkg.sha512",
     "/home/pixeleru/.nuget/packages/microsoft.net.illink.tasks/10.0.0/microsoft.net.illink.tasks.10.0.0.nupkg.sha512",
     "/home/pixeleru/.nuget/packages/pangosharp/3.24.24.95/pangosharp.3.24.24.95.nupkg.sha512",
-    "/home/pixeleru/.nuget/packages/microsoft.netcore.app.runtime.linux-x64/10.0.0/microsoft.netcore.app.runtime.linux-x64.10.0.0.nupkg.sha512",
-    "/home/pixeleru/.nuget/packages/microsoft.aspnetcore.app.runtime.linux-x64/10.0.0/microsoft.aspnetcore.app.runtime.linux-x64.10.0.0.nupkg.sha512",
-    "/home/pixeleru/.nuget/packages/microsoft.netcore.app.host.linux-x64/10.0.0/microsoft.netcore.app.host.linux-x64.10.0.0.nupkg.sha512"
+    "/home/pixeleru/.nuget/packages/microsoft.netcore.app.runtime.linux-arm/10.0.0/microsoft.netcore.app.runtime.linux-arm.10.0.0.nupkg.sha512",
+    "/home/pixeleru/.nuget/packages/microsoft.aspnetcore.app.runtime.linux-arm/10.0.0/microsoft.aspnetcore.app.runtime.linux-arm.10.0.0.nupkg.sha512",
+    "/home/pixeleru/.nuget/packages/microsoft.netcore.app.host.linux-arm/10.0.0/microsoft.netcore.app.host.linux-arm.10.0.0.nupkg.sha512"
   ],
   "logs": []
 }
