@@ -45,7 +45,9 @@ Contributions are welcome. Please open issues for bugs or feature requests. For 
 
 ## License
 
-Specify your project's license here (e.g., MIT, Apache-2.0). If you want, I can add a `LICENSE` file for you.
+This project is licensed under the Apache License, Version 2.0. See the `LICENSE` file for the full license text.
+
+Copyright 2026 pixeleru
 
 ## Contact
 
