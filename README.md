@@ -2,6 +2,8 @@
 
 BoxyTube is a compact GTK desktop client for browsing and playing videos via Invidious-compatible instances. It provides a native, privacy-minded interface for searching, browsing, and viewing video content with a small footprint and straightforward configuration.
 
+This repository contains the desktop client source and instructions to build and publish platform-specific artifacts.
+
 ## Features
 
 - Native GTK user interface for a consistent desktop experience
